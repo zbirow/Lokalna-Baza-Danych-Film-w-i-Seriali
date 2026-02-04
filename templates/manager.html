@@ -1,0 +1,621 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid px-5">
+    <h3 class="mb-4 text-center text-info fw-bold">Manager Multimediów (TMDB + Sezony)</h3>
+
+    <!-- 1. SKANOWANIE -->
+    <div class="card mb-4 shadow-sm border-secondary">
+        <div class="card-body">
+            <h5 class="card-title text-warning mb-3">1. Wybierz folder</h5>
+            <div class="input-group input-group-lg">
+                <button class="btn btn-warning fw-bold" type="button" onclick="openFolderDialog()">📂 Wybierz folder</button>
+                <input type="text" id="folderPath" class="form-control" placeholder="Ścieżka do katalogu...">
+                <button class="btn btn-primary px-5" onclick="scanFolder()">SKANUJ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. NARZĘDZIA MASOWE (TUTAJ ZMIANA) -->
+    <div class="card mb-4 shadow-sm border-secondary bg-dark">
+        <div class="card-header border-secondary text-light">2. Narzędzia</div>
+        <div class="card-body">
+            <div class="row g-3">
+                
+                <!-- KOLUMNA 1: Zaznaczanie i Filtrowanie -->
+                <div class="col-md-3 border-end border-secondary">
+                    <label class="text-muted small mb-2 d-block">Widok i Zaznaczanie:</label>
+                    
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-warning btn-sm" onclick="selectNewFiles()">Zaznacz "Nowe"</button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="invertSelection()">Odwróć zaznaczenie</button>
+                    </div>
+                
+                    <!-- NOWY PRZEŁĄCZNIK -->
+                    <div class="form-check form-switch mt-3 p-2 border border-secondary rounded bg-dark">
+                        <input class="form-check-input" type="checkbox" id="hideAddedSwitch" onchange="toggleAddedFiles()" style="cursor: pointer;">
+                        <label class="form-check-label text-light small" for="hideAddedSwitch" style="cursor: pointer;">
+                            Ukryj pliki będące w bazie
+                        </label>
+                    </div>
+                
+                    <div class="text-center mt-2 small text-muted">💡 SHIFT + Klik zaznacza wiele</div>
+                </div>
+
+                <!-- KOLUMNA 2: MASOWY SEZON (NOWOŚĆ) -->
+                <div class="col-md-3 border-end border-secondary">
+                    <label class="text-warning small mb-2 d-block fw-bold">Masowe ustawianie sezonu:</label>
+                    <div class="input-group mb-2">
+                        <span class="input-group-text bg-secondary text-white">Sezon:</span>
+                        <input type="number" id="globalSeasonInput" class="form-control" placeholder="#" value="1">
+                    </div>
+                    <button class="btn btn-warning w-100" onclick="applyGlobalSeason()">👇 Ustaw dla zaznaczonych</button>
+                    <small class="text-muted d-block mt-1 text-center">Wpisz nr i kliknij przycisk, by zmienić zaznaczone.</small>
+                </div>
+                
+                <!-- KOLUMNA 3: Wzór zaawansowany -->
+                <div class="col-md-6">
+                    <label class="text-muted small mb-2 d-block">Inteligentny wzór (gdy automat nie radzi sobie z numeracją):</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-secondary text-white">Wzór:</span>
+                        <input type="text" id="patternInput" class="form-control" placeholder="np. Serial S{s}E{e}.mkv">
+                        <button class="btn btn-info" onclick="applyPattern()">Wyciągnij numery</button>
+                    </div>
+                    <small class="text-muted d-block mt-1">
+                        Użyj <code>{s}</code> dla sezonu i <code>{e}</code> dla odcinka. <br>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. DANE Z TMDB -->
+    <div class="card mb-4 shadow-sm border-secondary sticky-top" style="top: 20px; z-index: 100;">
+        <div class="card-body p-3 bg-dark border border-warning rounded">
+            <div class="row g-2 align-items-center">
+                <div class="col-auto"><label class="fw-bold text-success">3. ID TMDB:</label></div>
+                <div class="col-auto">
+                    <div class="input-group">
+                        <input type="number" id="malIdInput" class="form-control" style="width: 100px;" placeholder="ID">
+                        <input type="hidden" id="mediaTypeInput">
+                        <button class="btn btn-primary" type="button" onclick="openSearchModal()">🔍 Szukaj</button>
+                    </div>
+                </div>
+                <div class="col-auto"><span id="selectedTypeBadge" class="badge bg-secondary">Brak typu</span></div>
+                <div class="col-auto ms-auto">
+                    <button class="btn btn-success fw-bold px-5" onclick="processSelected()">💾 ZAPISZ ZAZNACZONE</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TABELA -->
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="text-light m-0">Lista plików <span id="fileCount" class="badge bg-secondary">0</span></h5>
+    </div>
+
+    <div class="table-responsive shadow" style="min-height: 400px;">
+        <table class="table table-dark table-hover align-middle mb-0 border-secondary">
+            <thead class="table-secondary text-dark">
+                <tr>
+                    <th scope="col" style="width: 40px;"><input type="checkbox" id="selectAll" class="form-check-input" onclick="toggleSelectAll()"></th>
+                    <th scope="col" style="width: 60px;">Img</th>
+                    <th scope="col">Plik</th>
+                    <th scope="col" style="width: 80px;" class="text-warning">Sezon</th>
+                    <th scope="col" style="width: 80px;">Odc.</th>
+                    <th scope="col">Tytuł</th>
+                    <th scope="col">Typ</th>
+                    <th scope="col">Stan</th>
+                </tr>
+            </thead>
+            <tbody id="fileTableBody">
+                {% for file in db_files %}
+                <tr data-filename="{{ file.filename }}" data-filepath="{{ file.filepath }}" class="row-done">
+                    <td><input type="checkbox" class="form-check-input file-checkbox"></td>
+                    <td>{% if file.asset_url %}<img src="/{{ file.asset_url }}" class="anime-cover">{% else %}-{% endif %}</td>
+                    <td>
+                        <div class="fw-bold text-info">{{ file.filename }}</div>
+                        <small class="text-muted">{{ file.filepath }}</small>
+                    </td>
+                    <td><input type="text" class="form-control form-control-sm season-input" value="{{ file.season_number or 1 }}"></td>
+                    <td><input type="text" class="form-control form-control-sm ep-input" value="{{ file.episode_number or '' }}"></td>
+                    <td>{{ file.title or '-' }}</td>
+                    <td>
+                        {% if file.media_type == 'movie' %}<span class="badge bg-primary">Film</span>
+                        {% elif file.media_type == 'tv' %}<span class="badge bg-info text-dark">Serial</span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td><span class="badge bg-success">W bazie</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- MODAL SZUKANIA -->
+<!-- MODAL: SZUKANIE LUB RĘCZNE DODAWANIE -->
+<div class="modal fade" id="searchAnimeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content bg-dark text-white border-secondary shadow-lg">
+            
+            <div class="modal-header border-secondary">
+                <!-- Zakładki -->
+                <ul class="nav nav-pills" id="modalTabs" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active fw-bold" id="tab-tmdb" data-bs-toggle="pill" data-bs-target="#content-tmdb" type="button">
+                            🔍 Szukaj w TMDB
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold text-warning" id="tab-custom" data-bs-toggle="pill" data-bs-target="#content-custom" type="button">
+                            ✏️ Własna / YouTube
+                        </button>
+                    </li>
+                </ul>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="tab-content">
+                    
+                    <!-- 1. ZAKŁADKA TMDB -->
+                    <div class="tab-pane fade show active" id="content-tmdb">
+                        <div class="input-group mb-3">
+                            <input type="text" id="searchInput" class="form-control bg-dark text-white border-secondary" placeholder="Wpisz tytuł filmu/serialu...">
+                            <button class="btn btn-primary" onclick="performSearch()">Szukaj</button>
+                        </div>
+                        <div id="searchResults" class="list-group" style="max-height: 400px; overflow-y: auto;"></div>
+                    </div>
+
+                    <!-- 2. ZAKŁADKA WŁASNA -->
+                    <div class="tab-pane fade" id="content-custom">
+                        <div class="alert alert-secondary small">
+                            Tutaj możesz dodać serię z YouTube, stare nagrania lub cokolwiek, czego nie ma w bazach.
+                        </div>
+                        
+                        <form id="customForm">
+                            <div class="mb-3">
+                                <label class="form-label text-info">Tytuł serii / filmu:</label>
+                                <input type="text" id="customTitle" class="form-control bg-dark text-white border-secondary" placeholder="np. Wesele 1995">
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Typ:</label>
+                                    <select id="customType" class="form-select bg-dark text-white border-secondary">
+                                        <option value="tv">Serial / Seria YT</option>
+                                        <option value="movie">Film (Pojedynczy)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Okładka (opcjonalnie):</label>
+                                    <input type="file" id="customCover" class="form-control bg-dark text-white border-secondary" accept="image/*">
+                                </div>
+                            </div>
+
+                            <div class="d-grid">
+                                <button type="button" class="btn btn-warning fw-bold py-2" onclick="saveCustomSeries()">
+                                    💾 ZAPISZ WŁASNĄ SERIĘ
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .anime-cover { width: 40px; height: 60px; object-fit: cover; border: 1px solid #555; }
+    .row-new { --bs-table-bg: #2c2820; }
+    .row-done { --bs-table-bg: #212529; }
+    .season-input, .ep-input { text-align: center; background: #222; color: #fff; border: 1px solid #444; }
+    /* Wyróżnienie inputu sezonu */
+    .season-input:focus { border-color: #ffc107; box-shadow: 0 0 5px rgba(255, 193, 7, 0.5); }
+    .search-result-item { cursor: pointer; }
+    .search-result-item:hover { background-color: #333 !important; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // --- 1. SHIFT CLICK & SELEKCJA ---
+    let lastChecked = null; 
+
+    function setupShiftClick() {
+        const checkboxes = document.querySelectorAll('.file-checkbox');
+        checkboxes.forEach((checkbox, index) => {
+            checkbox.addEventListener('click', function(e) {
+                if (e.shiftKey && lastChecked !== null) {
+                    let start = Math.min(index, lastChecked);
+                    let end = Math.max(index, lastChecked);
+                    for (let i = start; i <= end; i++) {
+                        checkboxes[i].checked = this.checked; 
+                    }
+                }
+                lastChecked = index;
+            });
+        });
+    }
+
+    function selectNewFiles() {
+        const rows = document.querySelectorAll('#fileTableBody tr');
+        rows.forEach(row => {
+            const cb = row.querySelector('.file-checkbox');
+            cb.checked = row.classList.contains('row-new');
+        });
+        lastChecked = null; 
+    }
+
+    function invertSelection() {
+        document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = !cb.checked);
+        lastChecked = null;
+    }
+
+    // --- NOWOŚĆ: MASOWE USTAWIANIE SEZONU ---
+    function applyGlobalSeason() {
+        const val = document.getElementById('globalSeasonInput').value;
+        if(!val) return alert("Wpisz numer sezonu!");
+        
+        const checked = document.querySelectorAll('.file-checkbox:checked');
+        if(checked.length === 0) return alert("Zaznacz pliki, którym chcesz zmienić sezon!");
+
+        checked.forEach(cb => {
+            const row = cb.closest('tr');
+            const input = row.querySelector('.season-input');
+            input.value = val;
+            // Mały efekt wizualny (błyśnięcie ramką)
+            input.style.borderColor = "#ffc107";
+            setTimeout(() => input.style.borderColor = "#444", 1000);
+        });
+    }
+
+    // --- 2. ZGADYWANIE AUTOMATYCZNE ---
+    function guessSeasonAndEpisode(filename) {
+        const patterns = [
+            /[Ss](\d+)[Ee](\d+)/,
+            /(\d+)x(\d+)/,
+            /[Ss]ezon\s*(\d+).*?[Ee]p?\.?\s*(\d+)/i,
+            /[Ss]eason\s*(\d+).*?[Ee]p?\.?\s*(\d+)/i
+        ];
+        for (let p of patterns) {
+            const match = filename.match(p);
+            if (match) return { s: match[1], e: match[2] };
+        }
+        const epPatterns = [
+            /-\s+(\d+(?:\.\d+)?)\s*(?:\[|v\d|\.|$)/i,
+            /[Ee]p(?:isode)?\.?\s*(\d+(?:\.\d+)?)/i,
+            /[\[\(](\d+(?:\.\d+)?)[\]\)]/,
+            /\s(\d+(?:\.\d+)?)\.(?:mkv|mp4|avi|webm)$/i
+        ];
+        for (let p of epPatterns) {
+            const match = filename.match(p);
+            if (match) return { s: '1', e: match[1] };
+        }
+        return { s: '1', e: '' };
+    }
+
+    // --- 3. WZÓR ---
+    function applyPattern() {
+        const pattern = document.getElementById('patternInput').value;
+        if (!pattern || (!pattern.includes('{e}') && !pattern.includes('{s}'))) {
+            return alert("Wpisz wzór zawierający {e} (odcinek). Możesz użyć {s} dla sezonu.");
+        }
+        let regexStr = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
+        const hasS = regexStr.includes('\\{s\\}');
+        const hasE = regexStr.includes('\\{e\\}');
+        regexStr = regexStr.replace('\\{s\\}', '(\\d+)').replace('\\{e\\}', '(\\d+(?:\\.\\d+)?)');
+        
+        const regex = new RegExp(regexStr, 'i');
+        let count = 0;
+
+        const checkboxes = document.querySelectorAll('.file-checkbox:checked');
+        if (checkboxes.length === 0) return alert("Zaznacz pliki!");
+
+        checkboxes.forEach(cb => {
+            const row = cb.closest('tr');
+            const filename = row.getAttribute('data-filename');
+            const match = filename.match(regex);
+            if (match) {
+                const sInput = row.querySelector('.season-input');
+                const eInput = row.querySelector('.ep-input');
+                let results = match.slice(1); 
+                let resultIndex = 0;
+
+                if (pattern.indexOf('{s}') !== -1 && pattern.indexOf('{s}') < pattern.indexOf('{e}')) {
+                    if(hasS) sInput.value = results[resultIndex++];
+                    if(hasE) eInput.value = results[resultIndex++];
+                } else if (pattern.indexOf('{e}') !== -1 && pattern.indexOf('{e}') < pattern.indexOf('{s}')) {
+                    if(hasE) eInput.value = results[resultIndex++];
+                    if(hasS) sInput.value = results[resultIndex++];
+                } else {
+                    if(hasS) sInput.value = results[0];
+                    if(hasE) eInput.value = results[0];
+                }
+                sInput.style.borderColor = "#0dcaf0";
+                eInput.style.borderColor = "#0dcaf0";
+                count++;
+            }
+        });
+        alert(`Zaktualizowano ${count} plików.`);
+    }
+
+    // --- 4. SZUKANIE I SKANOWANIE ---
+    const searchModal = new bootstrap.Modal(document.getElementById('searchAnimeModal'));
+    
+    function openSearchModal() {
+        const checked = document.querySelectorAll('.file-checkbox:checked');
+        let query = "";
+        if (checked.length === 1) {
+            const row = checked[0].closest('tr');
+            let filename = row.getAttribute('data-filename');
+            query = filename.replace(/\.[^/.]+$/, "").replace(/[._]/g, " ");
+            query = query.replace(/[Ss]\d+[Ee]\d+/, "").replace(/\d+x\d+/, "").trim();
+        } else {
+            const path = document.getElementById('folderPath').value;
+            if (path) {
+                const parts = path.split(/[/\\]/).filter(p => p.length > 0);
+                query = parts[parts.length - 1];
+            }
+        }
+        document.getElementById('searchInput').value = query;
+        searchModal.show();
+        if(query) performSearch();
+    }
+
+    async function performSearch() {
+        const q = document.getElementById('searchInput').value;
+        const resDiv = document.getElementById('searchResults');
+        resDiv.innerHTML = '<div class="text-center text-light">Szukanie...</div>';
+        try {
+            const req = await fetch(`/search_anime?q=${encodeURIComponent(q)}`);
+            const data = await req.json();
+            resDiv.innerHTML = '';
+            data.results.forEach(a => {
+                const typeLabel = a.media_type === 'movie' ? '<span class="badge bg-primary">FILM</span>' : '<span class="badge bg-info text-dark">SERIAL</span>';
+                const safeTitle = a.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                resDiv.innerHTML += `
+                    <div class="list-group-item bg-dark text-white border-secondary d-flex gap-3 search-result-item" 
+                         onclick="selectAnime(${a.mal_id}, '${a.media_type}', '${safeTitle}')">
+                        <img src="${a.image_url}" style="width:50px; height:75px; object-fit:cover;">
+                        <div><strong>${a.title}</strong> ${typeLabel}<br><small>Rok: ${a.year}</small></div>
+                    </div>`;
+            });
+            if(!data.results.length) resDiv.innerHTML = '<div class="text-warning text-center">Brak wyników</div>';
+        } catch(e) { resDiv.innerHTML = '<div class="text-danger">Błąd</div>'; }
+    }
+
+    function selectAnime(id, type, title) {
+        document.getElementById('malIdInput').value = id;
+        document.getElementById('mediaTypeInput').value = type;
+        const badge = document.getElementById('selectedTypeBadge');
+        if (type === 'movie') { badge.className = 'badge bg-primary'; badge.innerText = 'FILM'; }
+        else { badge.className = 'badge bg-info text-dark'; badge.innerText = 'SERIAL'; }
+        searchModal.hide();
+    }
+
+    async function scanFolder() {
+        const path = document.getElementById('folderPath').value;
+        if (!path) return alert("Brak ścieżki");
+        const btn = document.querySelector('button[onclick="scanFolder()"]');
+        btn.disabled = true; btn.innerText = "...";
+        try {
+            const req = await fetch('/scan_folder', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({path})});
+            const data = await req.json();
+            renderTable(data.files);
+        } catch(e) { alert("Błąd skanowania"); }
+        btn.disabled = false; btn.innerText = "SKANUJ";
+    }
+
+    function renderTable(files) {
+        const tbody = document.getElementById('fileTableBody');
+        tbody.innerHTML = '';
+        files.forEach(f => {
+            let season = f.season_number;
+            let ep = f.episode_number;
+            if (!f.in_db) {
+                const guessed = guessSeasonAndEpisode(f.filename);
+                if(!season) season = guessed.s;
+                if(!ep) ep = guessed.e;
+            }
+            const rowClass = f.in_db ? 'row-done' : 'row-new';
+            const badge = f.in_db ? '<span class="badge bg-success">W bazie</span>' : '<span class="badge bg-warning text-dark">Nowy</span>';
+            const img = f.asset_url ? `<img src="/${f.asset_url}" class="anime-cover">` : '-';
+            let typeBadge = '-';
+            if (f.media_type === 'movie') typeBadge = '<span class="badge bg-primary">Film</span>';
+            else if (f.media_type === 'tv') typeBadge = '<span class="badge bg-info text-dark">Serial</span>';
+
+            const html = `
+                <tr data-filename="${f.filename}" data-filepath="${f.filepath}" class="${rowClass}">
+                    <td><input type="checkbox" class="file-checkbox"></td>
+                    <td>${img}</td>
+                    <td><div class="fw-bold ${f.in_db ? 'text-info' : 'text-warning'}">${f.filename}</div></td>
+                    <td><input type="text" class="form-control form-control-sm season-input" value="${season}"></td>
+                    <td><input type="text" class="form-control form-control-sm ep-input" value="${ep}"></td>
+                    <td>${f.title || '-'}</td>
+                    <td>${typeBadge}</td>
+                    <td>${badge}</td>
+                </tr>
+            `;
+            tbody.insertAdjacentHTML('beforeend', html);
+        });
+        
+        setupShiftClick();
+        
+        // NOWE: Aplikujemy filtrowanie zaraz po wyrenderowaniu tabeli
+        // (żeby po skanowaniu od razu ukryło, jak switch jest włączony)
+        toggleAddedFiles(); 
+    }
+
+    async function processSelected() {
+        const id = document.getElementById('malIdInput').value;
+        const type = document.getElementById('mediaTypeInput').value;
+        if (!id) return alert("Wybierz serię/film!");
+        if (!type) return alert("Brak typu!");
+        
+        const selected = [];
+        document.querySelectorAll('.file-checkbox:checked').forEach(cb => {
+            const row = cb.closest('tr');
+            selected.push({
+                filename: row.getAttribute('data-filename'),
+                filepath: row.getAttribute('data-filepath'),
+                season_number: row.querySelector('.season-input').value,
+                episode_number: row.querySelector('.ep-input').value
+            });
+        });
+
+        if (!selected.length) return alert("Zaznacz pliki!");
+        const btn = document.querySelector('button[onclick="processSelected()"]');
+        btn.disabled = true; btn.innerText = "Zapisywanie...";
+
+        try {
+            const req = await fetch('/process_files', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ mal_id: id, media_type: type, files: selected })
+            });
+            const res = await req.json();
+            if(res.success) {
+                document.querySelectorAll('.file-checkbox:checked').forEach(cb => {
+                    const row = cb.closest('tr');
+                    const ts = Date.now();
+                    row.className = 'row-done';
+                    row.querySelector('td:nth-child(2)').innerHTML = `<img src="/${res.data.asset_url}?t=${ts}" class="anime-cover">`;
+                    row.querySelector('.fw-bold').className = 'fw-bold text-info';
+                    row.querySelector('td:nth-child(6)').innerText = res.data.title;
+                    let typeBadgeHtml = type === 'movie' ? '<span class="badge bg-primary">Film</span>' : '<span class="badge bg-info text-dark">Serial</span>';
+                    row.querySelector('td:nth-child(7)').innerHTML = typeBadgeHtml;
+                    row.querySelector('td:nth-child(8)').innerHTML = '<span class="badge bg-success">Zapisano</span>';
+                    cb.checked = false;
+                });
+                alert(`Zaktualizowano ${res.updated} plików.`);
+            } else { alert("Błąd: " + res.error); }
+        } catch(e) { alert("Błąd zapisu"); }
+        btn.disabled = false; btn.innerText = "💾 ZAPISZ ZAZNACZONE";
+        lastChecked = null;
+    }
+
+    function openFolderDialog() { fetch('/select_folder_dialog').then(r=>r.json()).then(d=>{if(d.path)document.getElementById('folderPath').value=d.path}); }
+    function toggleSelectAll() { 
+        document.querySelectorAll('.file-checkbox').forEach(c => c.checked = document.getElementById('selectAll').checked); 
+        lastChecked = null;
+    }
+    function updateFileCount() { 
+        let visible = 0;
+        document.querySelectorAll('#fileTableBody tr').forEach(row => {
+            if(row.style.display !== 'none') visible++;
+        });
+        document.getElementById('fileCount').innerText = visible; 
+    }
+// --- AUTO-START (GDY PRZEKIEROWANO Z SERII) ---
+    document.addEventListener('DOMContentLoaded', () => {
+        const params = new URLSearchParams(window.location.search);
+        const path = params.get('path');
+        if (path) {
+            console.log("Auto-ładowanie folderu:", path);
+            document.getElementById('folderPath').value = path;
+            // Automatycznie klikamy "Skanuj"
+            scanFolder(); 
+        }
+    });
+// --- 5. OBSŁUGA WŁASNYCH SERII ---
+    
+    async function saveCustomSeries() {
+        const title = document.getElementById('customTitle').value;
+        const type = document.getElementById('customType').value;
+        const coverInput = document.getElementById('customCover');
+        
+        if (!title) return alert("Musisz podać tytuł!");
+        
+        // Pobieramy zaznaczone pliki
+        const selected = [];
+        document.querySelectorAll('.file-checkbox:checked').forEach(cb => {
+            const row = cb.closest('tr');
+            selected.push({
+                filename: row.getAttribute('data-filename'),
+                filepath: row.getAttribute('data-filepath'),
+                season_number: row.querySelector('.season-input').value,
+                episode_number: row.querySelector('.ep-input').value
+            });
+        });
+
+        if (!selected.length) return alert("Najpierw zaznacz pliki na liście pod spodem!");
+
+        const btn = document.querySelector('button[onclick="saveCustomSeries()"]');
+        btn.disabled = true; btn.innerText = "Zapisywanie...";
+
+        // Budujemy FormData (bo przesyłamy plik obrazka + JSON)
+        const formData = new FormData();
+        formData.append('title', title);
+        formData.append('media_type', type);
+        formData.append('files', JSON.stringify(selected)); // Pliki jako JSON string
+        
+        if(coverInput.files[0]) {
+            formData.append('cover', coverInput.files[0]);
+        }
+
+        try {
+            const req = await fetch('/process_custom', {
+                method: 'POST',
+                body: formData // Fetch sam ustawi nagłówki dla FormData
+            });
+            const res = await req.json();
+            
+            if(res.success) {
+                // Aktualizacja widoku
+                document.querySelectorAll('.file-checkbox:checked').forEach(cb => {
+                    const row = cb.closest('tr');
+                    const ts = Date.now();
+                    row.className = 'row-done';
+                    // Jeśli była okładka
+                    if(res.data.asset_url) {
+                        row.querySelector('td:nth-child(2)').innerHTML = `<img src="/${res.data.asset_url}?t=${ts}" class="anime-cover">`;
+                    } else {
+                        row.querySelector('td:nth-child(2)').innerHTML = `<div class="bg-secondary text-white small d-flex align-items-center justify-content-center" style="width:40px;height:60px;">TXT</div>`;
+                    }
+                    
+                    row.querySelector('.fw-bold').className = 'fw-bold text-info';
+                    row.querySelector('td:nth-child(6)').innerText = res.data.title;
+                    
+                    let typeBadgeHtml = res.data.media_type === 'movie' ? '<span class="badge bg-primary">Film</span>' : '<span class="badge bg-info text-dark">Serial</span>';
+                    row.querySelector('td:nth-child(7)').innerHTML = typeBadgeHtml;
+                    
+                    row.querySelector('td:nth-child(8)').innerHTML = '<span class="badge bg-success">Zapisano</span>';
+                    cb.checked = false;
+                });
+                
+                alert(`Dodano własną serię: ${res.data.title}`);
+                searchModal.hide();
+                // Czyścimy formularz
+                document.getElementById('customForm').reset();
+            } else {
+                alert("Błąd: " + res.error);
+            }
+        } catch (e) {
+            alert("Błąd połączenia: " + e);
+        }
+        
+        btn.disabled = false; btn.innerText = "💾 ZAPISZ WŁASNĄ SERIĘ";
+    }
+    // --- NOWA FUNKCJA: UKRYWANIE PLIKÓW ---
+    function toggleAddedFiles() {
+        const shouldHide = document.getElementById('hideAddedSwitch').checked;
+        const rows = document.querySelectorAll('#fileTableBody tr');
+
+        rows.forEach(row => {
+            // Sprawdzamy czy wiersz ma klasę 'row-done' (czyli jest w bazie)
+            if (row.classList.contains('row-done')) {
+                if (shouldHide) {
+                    row.style.display = 'none'; // Ukryj
+                } else {
+                    row.style.display = ''; // Pokaż (domyślny styl tabeli)
+                }
+            }
+        });
+        
+        // Zaktualizuj licznik widocznych plików
+        updateFileCount();
+    }
+</script>
+{% endblock %}

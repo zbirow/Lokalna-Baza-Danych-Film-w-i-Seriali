@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- NAGŁÓWEK SERII -->
+<div class="row mb-5 align-items-end">
+    <div class="col-md-3">
+        {% if info.asset_url %}
+        <img src="/{{ info.asset_url }}" class="img-fluid rounded shadow-lg border border-secondary w-100" style="max-height: 400px; object-fit: cover;">
+        {% else %}
+        <div class="d-flex align-items-center justify-content-center bg-secondary text-white rounded shadow" style="height: 300px;">Brak okładki</div>
+        {% endif %}
+    </div>
+    <div class="col-md-9">
+        <div class="d-flex align-items-center gap-3 mb-2">
+            {% if info.media_type == 'movie' %}
+                <span class="badge bg-primary fs-6">FILM</span>
+            {% else %}
+                <span class="badge bg-info text-dark fs-6">SERIAL</span>
+            {% endif %}
+            <span class="text-secondary">{{ info.year }}</span>
+        </div>
+        
+        <h1 class="display-4 fw-bold text-light mb-3">{{ info.title }}</h1>
+        
+        <div class="text-muted mb-4">
+            <i class="bi bi-collection-play"></i> Dostępne pliki: <span class="text-white fw-bold">{{ episodes|length }}</span>
+            {% if info.total_episodes %}
+            <span class="mx-2">|</span> Baza TMDB: {{ info.total_episodes }} odc.
+            {% endif %}
+        </div>
+
+        <div class="d-flex gap-2">
+            <a href="/" class="btn btn-outline-light px-4">
+                ↩ Wróć do biblioteki
+            </a>
+            
+            <!-- PRZYCISK: EDYTUJ W MANAGERZE -->
+            {% if episodes|length > 0 %}
+            <button onclick="goToManager('{{ episodes[0].filepath|replace('\\', '\\\\') }}')" class="btn btn-outline-warning px-4">
+                ✏️ Edytuj folder
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- LOGIKA VOD: FILMY VS SERIALE -->
+
+{% if info.media_type == 'movie' %}
+    <!-- WIDOK DLA FILMU -->
+    <h4 class="text-light border-bottom border-secondary pb-2 mb-3">Pliki wideo</h4>
+    <div class="list-group">
+        {% for file in episodes %}
+            <!-- POJEDYNCZY WIERSZ (FILM) -->
+            <div class="list-group-item list-group-item-dark border-secondary p-3 d-flex justify-content-between align-items-center anime-row" id="row-{{ file.id }}">
+                <a href="/watch/{{ file.id }}" class="d-flex align-items-center text-decoration-none text-reset flex-grow-1">
+                    <div class="me-3">🎬</div>
+                    <div>
+                        <span class="text-light d-block mb-1 fw-bold">{{ file.title }}</span>
+                        <small class="text-muted">{{ file.filename }}</small>
+                    </div>
+                </a>
+
+                <div class="d-flex align-items-center gap-3">
+                    <a href="/watch/{{ file.id }}" class="btn btn-sm btn-primary rounded-pill px-3">Oglądaj ▶</a>
+                    <!-- MENU TRZY KROPKI -->
+                    <div class="dropdown">
+                        <button class="btn btn-link text-secondary p-0" type="button" data-bs-toggle="dropdown"><span style="font-size: 1.5rem; line-height: 0.5;">⋮</span></button>
+                        <ul class="dropdown-menu dropdown-menu-dark">
+                            <li><button class="dropdown-item text-danger" onclick="deleteFile({{ file.id }})">🗑️ Usuń z biblioteki</button></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header">Ścieżka:</h6></li>
+                            <li><span class="dropdown-item-text small text-muted text-truncate" style="max-width: 200px;">{{ file.filepath }}</span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+{% else %}
+    <!-- WIDOK DLA SERIALU -->
+    {% set seasons = episodes|groupby('season_number') %}
+    
+    <ul class="nav nav-pills mb-4 gap-2" id="seasonTabs" role="tablist">
+        {% for season_num, batch in seasons %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if loop.first %}active{% endif %} fw-bold px-4" 
+                    id="pills-s{{ season_num }}-tab" 
+                    data-bs-toggle="pill" 
+                    data-bs-target="#pills-s{{ season_num }}" 
+                    type="button" role="tab">
+                Sezon {{ season_num }}
+            </button>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <div class="tab-content" id="seasonTabsContent">
+        {% for season_num, batch in seasons %}
+        <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="pills-s{{ season_num }}" role="tabpanel">
+            <div class="list-group">
+                {% for file in batch %}
+                
+                <!-- POJEDYNCZY WIERSZ (SERIAL) -->
+                <div class="list-group-item list-group-item-dark border-secondary p-3 d-flex justify-content-between align-items-center anime-row" id="row-{{ file.id }}">
+                    <a href="/watch/{{ file.id }}" class="d-flex align-items-center text-decoration-none text-reset flex-grow-1">
+                        <div class="me-4 text-center" style="min-width: 50px;">
+                            <span class="d-block text-secondary small">ODC</span>
+                            <span class="fs-4 fw-bold text-info">{{ file.episode_number }}</span>
+                        </div>
+                        <div>
+                            <span class="text-light d-block mb-1">{{ file.filename }}</span>
+                            <small class="text-muted d-none d-md-inline">Sezon {{ file.season_number }}</small>
+                        </div>
+                    </a>
+
+                    <div class="d-flex align-items-center gap-3">
+                        <a href="/watch/{{ file.id }}" class="btn btn-sm btn-primary rounded-pill px-3">Oglądaj ▶</a>
+                        <!-- MENU TRZY KROPKI -->
+                        <div class="dropdown">
+                            <button class="btn btn-link text-secondary p-0" type="button" data-bs-toggle="dropdown"><span style="font-size: 1.5rem; line-height: 0.5;">⋮</span></button>
+                            <ul class="dropdown-menu dropdown-menu-dark">
+                                <li><button class="dropdown-item text-danger" onclick="deleteFile({{ file.id }})">🗑️ Usuń z biblioteki</button></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Ścieżka:</h6></li>
+                                <li><span class="dropdown-item-text small text-muted text-truncate" style="max-width: 200px;">{{ file.filepath }}</span></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<style>
+    .nav-pills .nav-link.active { background-color: #e50914; color: white; }
+    .nav-pills .nav-link { background-color: #333; color: #bbb; border: 1px solid #444; }
+    .nav-pills .nav-link:hover { background-color: #444; color: white; }
+    .anime-row:hover { background-color: #2b3035 !important; border-left: 4px solid #e50914; }
+    .anime-row { border-left: 4px solid transparent; transition: all 0.2s; }
+    .dropdown-toggle::after { display: none; }
+</style>
+
+<script>
+    function goToManager(fullPath) {
+        let folderPath = fullPath.substring(0, Math.max(fullPath.lastIndexOf("\\"), fullPath.lastIndexOf("/")));
+        window.location.href = `/manager?path=${encodeURIComponent(folderPath)}`;
+    }
+
+    async function deleteFile(fileId) {
+        if(!confirm("Czy na pewno chcesz usunąć ten plik z bazy danych?")) return;
+        try {
+            const res = await fetch(`/delete_file/${fileId}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                const row = document.getElementById(`row-${fileId}`);
+                if(row) { row.style.opacity = '0'; setTimeout(() => row.remove(), 300); }
+            } else { alert("Błąd: " + data.error); }
+        } catch (e) { alert("Błąd połączenia"); }
+    }
+</script>
+
+{% endblock %}

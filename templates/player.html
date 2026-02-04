@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="text-center">
+    <h4 class="text-light mb-3">
+        <span class="text-muted">Oglądasz:</span> {{ file.title }} 
+        {% if file.episode_number %}- Odc {{ file.episode_number }}{% endif %}
+    </h4>
+    
+    <!-- KONTENER WIDEO - CZYSTY, BEZ ŻADNYCH NAPISÓW NA WIERZCHU -->
+    <div class="ratio ratio-16x9 shadow-lg border border-dark mb-2">
+        <video id="videoPlayer" controls autoplay class="rounded w-100 h-100">
+            <!-- Źródło wstawi JS -->
+        </video>
+    </div>
+
+    <!-- PASEK STEROWANIA I INFO (POD FILMEM) -->
+    <div class="d-flex justify-content-between align-items-center p-2 bg-dark border border-secondary rounded">
+        
+        <!-- Lewa: Przycisk powrotu -->
+        <a href="/series/{{ file.mal_id }}" class="btn btn-outline-secondary btn-sm">
+            ← Wróć
+        </a>
+
+        <!-- Środek: Info techniczne (Dyskretne!) -->
+        <small id="techInfo" class="text-muted" style="font-family: monospace;">
+            Inicjalizacja...
+        </small>
+
+        <!-- Prawa: Przycisk VLC -->
+        <button onclick="forceVLC()" class="btn btn-warning btn-sm fw-bold">
+            🖥️ Otwórz w VLC
+        </button>
+    </div>
+</div>
+
+<script>
+    const video = document.getElementById('videoPlayer');
+    const techInfo = document.getElementById('techInfo');
+    const fileId = "{{ file.id }}";
+
+    // 1. Start: Próba Direct (MP4/WebM)
+    function startPlayback() {
+        techInfo.innerText = "Direct Stream";
+        techInfo.className = "text-muted"; // Szary, niewidoczny
+        
+        video.src = `/stream/${fileId}`;
+        
+        // Jak Direct padnie (MKV/HEVC), włącz Remux
+        video.onerror = () => {
+            console.log("Direct fail -> Switching to Remux");
+            switchToRemux();
+        };
+    }
+
+    // 2. Tryb Remux (FFmpeg w tle)
+    function switchToRemux() {
+        // Zmieniamy tekst na niebieski, żebyś wiedział że to Remux, ale BEZ TŁA
+        techInfo.innerText = "Remux (Live Conversion)";
+        techInfo.className = "text-info fw-bold"; 
+        
+        video.src = `/stream_remux/${fileId}`;
+        video.load();
+        video.play();
+
+        // Jak Remux padnie
+        video.onerror = () => {
+            techInfo.innerText = "Błąd kodeka! Użyj VLC.";
+            techInfo.className = "text-danger fw-bold";
+        };
+    }
+
+    function forceVLC() {
+        fetch(`/open_system/${fileId}`);
+    }
+
+    document.addEventListener('DOMContentLoaded', startPlayback);
+</script>
+{% endblock %}

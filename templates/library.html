@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- PASEK NARZĘDZI (Wyszukiwanie + Filtry) -->
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 border-bottom pb-3 border-secondary gap-3">
+    <h2 class="m-0 text-light fw-bold">Twoja biblioteka</h2>
+    
+    <div class="d-flex gap-3 flex-wrap justify-content-center">
+        <!-- Filtry Typu -->
+        <div class="btn-group" role="group">
+            <input type="radio" class="btn-check" name="typeFilter" id="filterAll" autocomplete="off" checked onchange="filterLibrary()">
+            <label class="btn btn-outline-secondary" for="filterAll">Wszystko</label>
+
+            <input type="radio" class="btn-check" name="typeFilter" id="filterMovie" autocomplete="off" onchange="filterLibrary()">
+            <label class="btn btn-outline-primary" for="filterMovie">Filmy</label>
+
+            <input type="radio" class="btn-check" name="typeFilter" id="filterTv" autocomplete="off" onchange="filterLibrary()">
+            <label class="btn btn-outline-info" for="filterTv">Seriale</label>
+        </div>
+
+        <!-- Wyszukiwarka -->
+        <div class="input-group" style="max-width: 300px;">
+            <span class="input-group-text bg-dark border-secondary text-secondary">🔍</span>
+            <input type="text" id="librarySearch" class="form-control bg-dark text-white border-secondary" placeholder="Szukaj tytułu..." onkeyup="filterLibrary()">
+        </div>
+    </div>
+</div>
+
+<!-- GRID Z ELEMENTAMI -->
+<div class="row row-cols-2 row-cols-md-4 row-cols-lg-5 g-4" id="libraryGrid">
+    {% for anime in series %}
+    <!-- 
+       DODANO ATRYBUTY:
+       data-title -> nazwa małymi literami do szukania
+       data-type  -> typ (movie/tv) do filtrowania
+    -->
+    <div class="col library-item" 
+         data-title="{{ anime.title.lower() }}" 
+         data-type="{{ anime.media_type }}">
+         
+        <a href="/series/{{ anime.mal_id }}" class="text-decoration-none">
+            <div class="card h-100 shadow-sm bg-dark border-secondary anime-card">
+                <div class="position-relative">
+                    {% if anime.asset_url %}
+                    <img src="/{{ anime.asset_url }}" class="anime-poster card-img-top" alt="{{ anime.title }}">
+                    {% else %}
+                    <div class="d-flex align-items-center justify-content-center bg-secondary anime-poster text-white">Brak okładki</div>
+                    {% endif %}
+                    
+                    <!-- Badge typu (Film/Serial) na okładce -->
+                    <span class="position-absolute top-0 end-0 badge rounded-0 
+                        {% if anime.media_type == 'movie' %}bg-primary{% else %}bg-info text-dark{% endif %}">
+                        {% if anime.media_type == 'movie' %}FILM{% else %}TV{% endif %}
+                    </span>
+                </div>
+
+                <div class="card-body p-2 text-white">
+                    <h6 class="card-title text-truncate fw-bold mb-1" title="{{ anime.title }}">{{ anime.title }}</h6>
+                    <small class="text-secondary d-flex justify-content-between">
+                        <span>{{ anime.file_count }} plików</span>
+                    </small>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% else %}
+    <div class="col-12 text-center py-5">
+        <h4 class="text-muted">Biblioteka jest pusta.</h4>
+        <a href="/manager" class="btn btn-primary mt-3">Przejdź do Managera i dodaj pliki</a>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Komunikat gdy nic nie znaleziono -->
+<div id="noResults" class="text-center py-5 d-none">
+    <h4 class="text-muted">Brak wyników dla tego wyszukiwania.</h4>
+</div>
+
+<!-- CSS DLA WYGLĄDU -->
+<style>
+    .anime-poster {
+        height: 300px;
+        object-fit: cover;
+        transition: transform 0.2s;
+    }
+    .anime-card:hover .anime-poster {
+        opacity: 0.8;
+    }
+    .anime-card:hover {
+        border-color: #0dcaf0 !important; /* Cyan border on hover */
+        transform: translateY(-5px);
+        transition: transform 0.2s, border-color 0.2s;
+    }
+    /* Ukrywanie scrollbara w razie potrzeby */
+    .card-title { font-size: 0.95rem; }
+</style>
+
+<!-- SKRYPT FILTRUJĄCY -->
+<script>
+    function filterLibrary() {
+        const searchInput = document.getElementById('librarySearch').value.toLowerCase();
+        const items = document.querySelectorAll('.library-item');
+        
+        // Pobieramy aktywny filtr typu
+        let activeType = 'all';
+        if(document.getElementById('filterMovie').checked) activeType = 'movie';
+        if(document.getElementById('filterTv').checked) activeType = 'tv';
+
+        let visibleCount = 0;
+
+        items.forEach(item => {
+            const title = item.getAttribute('data-title');
+            const type = item.getAttribute('data-type');
+            
+            // Logika sprawdzająca
+            const matchesSearch = title.includes(searchInput);
+            const matchesType = (activeType === 'all') || (type === activeType);
+
+            if (matchesSearch && matchesType) {
+                item.classList.remove('d-none'); // Pokaż
+                visibleCount++;
+            } else {
+                item.classList.add('d-none'); // Ukryj
+            }
+        });
+
+        // Obsługa komunikatu "Brak wyników"
+        const noResMsg = document.getElementById('noResults');
+        if (visibleCount === 0 && items.length > 0) {
+            noResMsg.classList.remove('d-none');
+        } else {
+            noResMsg.classList.add('d-none');
+        }
+    }
+</script>
+
+{% endblock %}
